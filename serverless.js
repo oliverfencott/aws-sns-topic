@@ -1,7 +1,7 @@
 const aws = require('aws-sdk')
-const { mergeDeepRight, pick } = require('ramda')
+const { isEmpty, mergeDeepRight, pick } = require('ramda')
 const { Component } = require('@serverless/components')
-const { createTopic, removeTopic } = require('./utils')
+const { createTopic, deleteTopic, getTopic, resolveArn } = require('./utils')
 
 const outputsList = ['arn']
 
@@ -26,7 +26,19 @@ class AwsSnsTopic extends Component {
       credentials: this.context.credentials.aws
     })
 
-    config.arn = await createTopic({ sns, name: config.name })
+    const arn = await resolveArn({ aws, name: config.name, region: config.region })
+
+    const prevInstance = await getTopic({ sns, arn })
+
+    if (isEmpty(prevInstance)) {
+      this.cli.status(`Creating`)
+      const result = await createTopic({ sns, name: config.name })
+    } else {
+      this.cli.status(`Updating`)
+      // update attributes
+    }
+
+    config.arn = arn
 
     this.state.name = config.name
     this.state.arn = config.arn
@@ -40,12 +52,17 @@ class AwsSnsTopic extends Component {
   async remove(inputs = {}) {
     const config = mergeDeepRight(defaults, inputs)
     config.name = inputs.name || this.state.name || defaults.name
+
+    const arn = await resolveArn({ aws, name: config.name, region: config.region })
+
     const sns = new aws.SNS({
       region: config.region,
       credentials: this.context.credentials.aws
     })
 
-    await removeTopic({ sns, arn: this.state.arn })
+    this.cli.status(`Removing`)
+
+    await deleteTopic({ sns, arn })
 
     this.state = {}
     await this.save()
