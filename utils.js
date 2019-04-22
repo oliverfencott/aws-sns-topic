@@ -1,22 +1,29 @@
 const {
+  clone,
   concat,
-  contains,
-  equals,
-  filter,
-  find,
-  head,
+  difference,
+  fromPairs,
+  is,
   isNil,
-  keys,
   map,
   merge,
+  mergeDeepRight,
   reduce,
-  values
+  pick,
+  toPairs
 } = require('ramda')
 
 const { titelize } = require('@serverless/components')
 
+const getDefaults = ({ defaults, accountId, arn }) => {
+  const response = clone(defaults)
+  response.policy.Statement[0].Resource = arn
+  response.policy.Statement[0].Condition.StringEquals['AWS:SourceOwner'] = accountId
+  return response
+}
+
 const getTopic = async ({ sns, arn }) => {
-  let topicAttributes = {};
+  let topicAttributes = {}
   try {
     const response = await sns.getTopicAttributes({ TopicArn: arn }).promise()
     topicAttributes = response.Attributes
@@ -34,30 +41,8 @@ const getAccountId = async (aws) => {
   return res.Account
 }
 
-const resolveArn = async ({ aws, name, region }) => {
-  const accountId = await getAccountId(aws)
+const getArn = ({ name, region, accountId }) => {
   return `arn:aws:sns:${region}:${accountId}:${name}`
-}
-
-const getChangedAttributes = (inputs, state = []) => {
-  const attributeKeys = map((item) => head(keys(item)), inputs)
-  return filter((item) => isNil(find(equals(item))(state)))(
-    concat(
-      inputs,
-      reduce(
-        (attributes, attribute) => {
-          const key = head(keys(attribute))
-          if (!contains(key, attributeKeys)) {
-            // return empty string to "unset" removed value
-            return concat(attributes, [{ [key]: '' }])
-          }
-          return attributes
-        },
-        [],
-        state
-      )
-    )
-  )
 }
 
 const resolveInSequence = async (functionsToExecute) =>
@@ -68,30 +53,28 @@ const resolveInSequence = async (functionsToExecute) =>
     functionsToExecute
   )
 
-const updateTopicAttributes = async (sns, { topicAttributes, topicArn }) =>
+const updateTopicAttributes = async (sns, { topicAttributes, arn }) =>
   Promise.all(
-    map((topicAttribute) => {
-      const value = head(values(topicAttribute))
+    map(([key, value]) => {
       const params = {
-        TopicArn: topicArn,
-        AttributeName: titelize(head(keys(topicAttribute))),
-        AttributeValue: typeof value !== 'string' ? JSON.stringify(value) : value
+        TopicArn: arn,
+        AttributeName: key,
+        AttributeValue: !is(String, value) ? JSON.stringify(value) : value
       }
       return sns.setTopicAttributes(params).promise()
     }, topicAttributes)
   )
 
-const updateDeliveryStatusAttributes = async (sns, { deliveryStatusAttributes, topicArn }) =>
+const updateDeliveryStatusAttributes = async (sns, { deliveryStatusAttributes, arn }) =>
   // run update requests sequentially because setTopicAttributes
   // fails to update when rate exceeds https://github.com/serverless/components/issues/174#issuecomment-390463523
   resolveInSequence(
     map(
-      (topicAttribute) => () => {
-        const value = head(values(topicAttribute))
+      ([key, value]) => () => {
         const params = {
-          TopicArn: topicArn,
-          AttributeName: titelize(head(keys(topicAttribute))),
-          AttributeValue: typeof value !== 'string' ? JSON.stringify(value) : value
+          TopicArn: arn,
+          AttributeName: titelize(key),
+          AttributeValue: !is(String, value) ? JSON.stringify(value) : value
         }
         return sns.setTopicAttributes(params).promise()
       },
@@ -101,83 +84,76 @@ const updateDeliveryStatusAttributes = async (sns, { deliveryStatusAttributes, t
 
 const updateAttributes = async (
   sns,
-  { displayName, policy, deliveryPolicy, deliveryStatusAttributes = [], topicArn },
+  { displayName, policy, deliveryPolicy, deliveryStatusAttributes = [], arn },
   prevInstance
 ) => {
-  const topicAttributes = reduce(
-    (result, value) => {
-      if (head(values(value))) {
-        return concat(result, [value])
-      }
-      return result
-    },
-    [],
-    [{ displayName }, { policy }, { deliveryPolicy }]
+  const previousTopicAttributes = map(
+    ([key, value]) => [key, /Policy/.test(key) ? JSON.parse(value) : value],
+    toPairs(pick(['DisplayName', 'Policy', 'DeliveryPolicy'], prevInstance))
   )
 
-  const prevInstanceTopicAttributes = filter((item) => !isNil(head(values(item))))([
-    { displayName: prevInstance.DisplayName },
-    { policy: prevInstance.Policy },
-    { deliveryPolicy: prevInstance.DeliveryPolicy }
-  ])
-
-  // combine inputs and check if something is removed
-  const topicAttributesToUpdate = getChangedAttributes(topicAttributes, prevInstanceTopicAttributes)
-
-  await updateTopicAttributes(sns, { topicAttributes: topicAttributesToUpdate, topicArn })
-
-  // flatten delivery status attributes array
-  const flatDeliveryStatusAttributes = reduce(
-    (result, attribute) =>
-      concat(result, map((key) => ({ [key]: attribute[key] }), keys(attribute))),
-    [],
-    deliveryStatusAttributes
+  const currentTopicAttributes = map(
+    ([key, value]) => [titelize(key), value],
+    toPairs({ displayName, policy, deliveryPolicy })
   )
 
-  // combine inputs and check if something is removed and select only ones that differs in state and inputs
-  const deliveryStatusAttributesToUpdate = getChangedAttributes(
-    flatDeliveryStatusAttributes,
-    prevInstance.deliveryStatusAttributes
+  const changedTopicAttributes = difference(currentTopicAttributes, previousTopicAttributes)
+
+  const mergedTopicAttributes = mergeDeepRight(
+    fromPairs(previousTopicAttributes),
+    fromPairs(currentTopicAttributes)
   )
 
-  // update delivery status attributes
+  await updateTopicAttributes(sns, { topicAttributes: changedTopicAttributes, arn })
+
+  const currentDeliveryStatusAttributes = map(
+    ([key, value]) => [key, value.toString()],
+    reduce((acc, attribute) => concat(acc, toPairs(attribute)), [], deliveryStatusAttributes)
+  )
+
+  const previousDeliveryStatusAttributes = toPairs(
+    pick(
+      [
+        'ApplicationSuccessFeedbackRoleArn',
+        'ApplicationSuccessFeedbackSampleRate',
+        'ApplicationFailureFeedbackRoleArn',
+        'HTTPSuccessFeedbackRoleArn',
+        'HTTPSuccessFeedbackSampleRate',
+        'HTTPFailureFeedbackRoleArn',
+        'LambdaSuccessFeedbackRoleArn',
+        'LambdaSuccessFeedbackSampleRate',
+        'LambdaFailureFeedbackRoleArn',
+        'SQSSuccessFeedbackRoleArn',
+        'SQSSuccessFeedbackSampleRate',
+        'SQSFailureFeedbackRoleArn'
+      ],
+      prevInstance
+    )
+  )
+
+  const removableDeliveryStatusAttributes = map(([key, value]) => {
+    return [
+      key,
+      isNil(currentDeliveryStatusAttributes[key]) && !/SampleRate/.test(key) ? '' : value
+    ]
+  }, difference(previousDeliveryStatusAttributes, currentDeliveryStatusAttributes))
+
+  const changedDeliveryStatusAttributes = concat(
+    difference(currentDeliveryStatusAttributes, previousDeliveryStatusAttributes),
+    removableDeliveryStatusAttributes
+  )
+
   await updateDeliveryStatusAttributes(sns, {
-    deliveryStatusAttributes: deliveryStatusAttributesToUpdate,
-    topicArn
+    deliveryStatusAttributes: changedDeliveryStatusAttributes,
+    arn
   })
 
-  return merge(
-    reduce(
-      (result, value) => merge({ [head(keys(value))]: head(values(value)) }, result),
-      {},
-      topicAttributes
-    ),
-    { deliveryStatusAttributes: flatDeliveryStatusAttributes }
-  )
+  return merge(mergedTopicAttributes, currentDeliveryStatusAttributes)
 }
 
-const createTopic = async ({
-  sns,
-  name,
-  displayName,
-  policy,
-  deliveryPolicy,
-  deliveryStatusAttributes,
-  prevInstance
-}) => {
-  const { TopicArn: topicArn } = await sns.createTopic({ Name: name }).promise()
-  // const topicAttributes = await updateAttributes(
-  //   {
-  //     displayName,
-  //     policy,
-  //     deliveryPolicy,
-  //     deliveryStatusAttributes,
-  //     topicArn
-  //   },
-  //   prevInstance
-  // )
-  // return merge({ topicArn, name }, topicAttributes)
-  return { topicArn, name }
+const createTopic = async ({ sns, name }) => {
+  const { TopicArn: arn } = await sns.createTopic({ Name: name }).promise()
+  return { arn }
 }
 
 const deleteTopic = async ({ sns, arn }) => {
@@ -193,7 +169,9 @@ const deleteTopic = async ({ sns, arn }) => {
 module.exports = {
   createTopic,
   deleteTopic,
+  getAccountId,
+  getArn,
+  getDefaults,
   getTopic,
-  resolveArn,
   updateAttributes
 }
