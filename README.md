@@ -4,12 +4,10 @@ Deploy SNS Topic to AWS in seconds with [Serverless Components](https://github.c
 
 &nbsp;
 
-- [AWS SNS Topic](#aws-sns-topic)
-    - [1. Install](#1-install)
-    - [2. Create](#2-create)
-    - [3. Configure](#3-configure)
-    - [4. Deploy](#4-deploy)
-    - [New to Components?](#new-to-components)
+1. [Install](#1-install)
+2. [Create](#2-create)
+3. [Configure](#3-configure)
+4. [Deploy](#4-deploy)
 
 &nbsp;
 
