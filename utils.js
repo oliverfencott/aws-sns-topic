@@ -13,7 +13,7 @@ const {
   toPairs
 } = require('ramda')
 
-const { titelize } = require('@serverless/components')
+const { utils } = require('@serverless/components')
 
 const getDefaults = ({ defaults, accountId, arn }) => {
   const response = clone(defaults)
@@ -73,7 +73,7 @@ const updateDeliveryStatusAttributes = async (sns, { deliveryStatusAttributes, a
       ([key, value]) => () => {
         const params = {
           TopicArn: arn,
-          AttributeName: titelize(key),
+          AttributeName: utils.titelize(key),
           AttributeValue: !is(String, value) ? JSON.stringify(value) : value
         }
         return sns.setTopicAttributes(params).promise()
@@ -93,7 +93,7 @@ const updateAttributes = async (
   )
 
   const currentTopicAttributes = map(
-    ([key, value]) => [titelize(key), value],
+    ([key, value]) => [utils.titelize(key), value],
     toPairs({ displayName, policy, deliveryPolicy })
   )
 

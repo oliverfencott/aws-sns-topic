@@ -78,7 +78,7 @@ class AwsSnsTopic extends Component {
     const config = mergeDeepRight(getDefaults({ accountId, arn, defaults }), inputs)
     config.arn = arn
 
-    this.cli.status(`Deploying`)
+    this.ui.status(`Deploying`)
 
     const sns = new aws.SNS({
       region: config.region,
@@ -88,14 +88,14 @@ class AwsSnsTopic extends Component {
     const prevInstance = await getTopic({ sns, arn })
 
     if (isEmpty(prevInstance)) {
-      this.cli.status(`Creating`)
+      this.ui.status(`Creating`)
       await createTopic({
         sns,
         name: config.name,
         displayName: config.displayName
       })
     } else {
-      this.cli.status(`Updating`)
+      this.ui.status(`Updating`)
     }
 
     const topicAttributes = await updateAttributes(sns, config, prevInstance)
@@ -109,7 +109,10 @@ class AwsSnsTopic extends Component {
     await this.save()
 
     const outputs = pick(outputsList, config)
-    this.cli.outputs(outputs)
+
+    this.ui.log()
+    this.ui.output('arn', outputs.arn)
+
     return outputs
   }
 
@@ -130,7 +133,7 @@ class AwsSnsTopic extends Component {
       credentials: this.context.credentials.aws
     })
 
-    this.cli.status(`Removing`)
+    this.ui.status(`Removing`)
 
     await deleteTopic({ sns, arn })
 
