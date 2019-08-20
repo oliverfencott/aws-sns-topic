@@ -1,6 +1,6 @@
 const aws = require('aws-sdk')
 const { isEmpty, mergeDeepRight, pick } = require('ramda')
-const { Component } = require('@serverless/components')
+const { Component } = require('@serverless/core')
 const {
   createTopic,
   deleteTopic,
@@ -78,7 +78,7 @@ class AwsSnsTopic extends Component {
     const config = mergeDeepRight(getDefaults({ accountId, arn, defaults }), inputs)
     config.arn = arn
 
-    this.ui.status(`Deploying`)
+    this.context.status(`Deploying`)
 
     const sns = new aws.SNS({
       region: config.region,
@@ -88,14 +88,14 @@ class AwsSnsTopic extends Component {
     const prevInstance = await getTopic({ sns, arn })
 
     if (isEmpty(prevInstance)) {
-      this.ui.status(`Creating`)
+      this.context.status(`Creating`)
       await createTopic({
         sns,
         name: config.name,
         displayName: config.displayName
       })
     } else {
-      this.ui.status(`Updating`)
+      this.context.status(`Updating`)
     }
 
     const topicAttributes = await updateAttributes(sns, config, prevInstance)
@@ -109,10 +109,6 @@ class AwsSnsTopic extends Component {
     await this.save()
 
     const outputs = pick(outputsList, config)
-
-    this.ui.log()
-    this.ui.output('arn', outputs.arn)
-
     return outputs
   }
 
@@ -133,7 +129,7 @@ class AwsSnsTopic extends Component {
       credentials: this.context.credentials.aws
     })
 
-    this.ui.status(`Removing`)
+    this.context.status(`Removing`)
 
     await deleteTopic({ sns, arn })
 
