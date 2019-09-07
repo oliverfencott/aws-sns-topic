@@ -1,5 +1,5 @@
 const aws = require('aws-sdk')
-const { isEmpty, mergeDeepRight, pick } = require('ramda')
+const { isEmpty, isNil, mergeDeepRight, pick } = require('ramda')
 const { Component } = require('@serverless/core')
 const {
   createTopic,
@@ -113,16 +113,19 @@ class AwsSnsTopic extends Component {
   }
 
   async remove(inputs = {}) {
-    const accountId = await getAccountId(aws)
-    const arn = getArn({
-      aws,
-      accountId,
-      name: inputs.name || defaults.name,
-      region: inputs.region || defaults.region
-    })
 
     const config = mergeDeepRight(defaults, inputs)
     config.name = inputs.name || this.state.name || defaults.name
+
+    if (isNil(config.arn)) {
+      const accountId = await getAccountId(aws)
+      config.arn = getArn({
+        aws,
+        accountId,
+        name: config.name,
+        region: config.region
+      })
+    }
 
     const sns = new aws.SNS({
       region: config.region,
@@ -131,7 +134,7 @@ class AwsSnsTopic extends Component {
 
     this.context.status(`Removing`)
 
-    await deleteTopic({ sns, arn })
+    await deleteTopic({ sns, arn: config.arn })
 
     this.state = {}
     await this.save()
