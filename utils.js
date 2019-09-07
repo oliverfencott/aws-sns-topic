@@ -3,17 +3,20 @@ const {
   concat,
   difference,
   fromPairs,
+  head,
   is,
   isNil,
   map,
   merge,
   mergeDeepRight,
-  reduce,
   pick,
-  toPairs
+  reduce,
+  tail,
+  toPairs,
+  toUpper
 } = require('ramda')
 
-const { utils } = require('@serverless/components')
+const titelize = (string) => `${toUpper(head(string))}${tail(string)}`
 
 const getDefaults = ({ defaults, accountId, arn }) => {
   const response = clone(defaults)
@@ -73,7 +76,7 @@ const updateDeliveryStatusAttributes = async (sns, { deliveryStatusAttributes, a
       ([key, value]) => () => {
         const params = {
           TopicArn: arn,
-          AttributeName: utils.titelize(key),
+          AttributeName: titelize(key),
           AttributeValue: !is(String, value) ? JSON.stringify(value) : value
         }
         return sns.setTopicAttributes(params).promise()
@@ -93,7 +96,7 @@ const updateAttributes = async (
   )
 
   const currentTopicAttributes = map(
-    ([key, value]) => [utils.titelize(key), value],
+    ([key, value]) => [titelize(key), value],
     toPairs({ displayName, policy, deliveryPolicy })
   )
 
