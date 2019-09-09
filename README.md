@@ -15,7 +15,7 @@ Deploy SNS Topic to AWS in seconds with [Serverless Components](https://github.c
 ### 1. Install
 
 ```console
-$ npm install -g @serverless/components
+$ npm install -g serverless
 ```
 
 ### 2. Create
@@ -105,16 +105,7 @@ myTopic:
 ### 4. Deploy
 
 ```console
-AwsSnsTopic (master)$ components
-
-  AwsSnsTopic › outputs:
-  arn:  'arn:aws:sns:us-east-1:123456789012:my-topic'
-
-
-  4s › dev › AwsSnsTopic › done
-
-AwsSnsTopic (master)$
-
+$ serverless
 ```
 
 ### New to Components?
