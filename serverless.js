@@ -75,7 +75,11 @@ class AwsSnsTopic extends Component {
       region: inputs.region || defaults.region
     })
 
-    const config = mergeDeepRight(getDefaults({ accountId, arn, defaults }), inputs)
+    const populatedDefaults = getDefaults({ accountId, arn, defaults })
+    const config = mergeDeepRight(populatedDefaults, inputs)
+    for (const i in config.policy.Statement) {
+      config.policy.Statement[i] = mergeDeepRight(populatedDefaults.policy.Statement[0], config.policy.Statement[i])
+    }
     config.arn = arn
 
     this.context.status(`Deploying`)
