@@ -8,7 +8,8 @@ const {
   getTopic,
   getAccountId,
   getArn,
-  updateAttributes
+  updateAttributes,
+  log
 } = require('./utils')
 
 const outputsList = ['arn']
@@ -66,7 +67,7 @@ const defaults = {
 }
 
 class AwsSnsTopic extends Component {
-  async default(inputs = {}) {
+  async deploy(inputs = {}) {
     const accountId = await getAccountId(aws)
     const arn = getArn({
       aws,
@@ -78,28 +79,31 @@ class AwsSnsTopic extends Component {
     const populatedDefaults = getDefaults({ accountId, arn, defaults })
     const config = mergeDeepRight(populatedDefaults, inputs)
     for (const i in config.policy.Statement) {
-      config.policy.Statement[i] = mergeDeepRight(populatedDefaults.policy.Statement[0], config.policy.Statement[i])
+      config.policy.Statement[i] = mergeDeepRight(
+        populatedDefaults.policy.Statement[0],
+        config.policy.Statement[i]
+      )
     }
     config.arn = arn
 
-    this.context.status(`Deploying`)
+    log(`Deploying`)
 
     const sns = new aws.SNS({
       region: config.region,
-      credentials: this.context.credentials.aws
+      credentials: this.credentials.aws
     })
 
     const prevInstance = await getTopic({ sns, arn })
 
     if (isEmpty(prevInstance)) {
-      this.context.status(`Creating`)
+      log(`Creating`)
       await createTopic({
         sns,
         name: config.name,
         displayName: config.displayName
       })
     } else {
-      this.context.status(`Updating`)
+      log(`Updating`)
     }
 
     const topicAttributes = await updateAttributes(sns, config, prevInstance)
@@ -117,7 +121,6 @@ class AwsSnsTopic extends Component {
   }
 
   async remove(inputs = {}) {
-
     const config = mergeDeepRight(defaults, inputs)
     config.name = inputs.name || this.state.name || defaults.name
 
@@ -133,10 +136,10 @@ class AwsSnsTopic extends Component {
 
     const sns = new aws.SNS({
       region: config.region,
-      credentials: this.context.credentials.aws
+      credentials: this.credentials.aws
     })
 
-    this.context.status(`Removing`)
+    log(`Removing`)
 
     await deleteTopic({ sns, arn: config.arn })
 

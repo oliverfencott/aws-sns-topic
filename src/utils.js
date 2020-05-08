@@ -17,6 +17,7 @@ const {
 } = require('ramda')
 
 const titelize = (string) => `${toUpper(head(string))}${tail(string)}`
+const log = (arg) => (console.log(arg), arg)
 
 const getDefaults = ({ defaults, accountId, arn }) => {
   const response = clone(defaults)
@@ -176,5 +177,6 @@ module.exports = {
   getArn,
   getDefaults,
   getTopic,
-  updateAttributes
+  updateAttributes,
+  log
 }
